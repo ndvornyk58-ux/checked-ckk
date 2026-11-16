@@ -1,0 +1,6 @@
+# Netscape HTTP Cookie File
+# комментарий
+
+.example.test	TRUE	/	TRUE	2000000000	theme	dark
+#HttpOnly_app.example.test	FALSE	/	TRUE	0	sessionid	aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+app.example.test	FALSE	/api	FALSE	1600000000	old	1

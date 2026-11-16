@@ -1,0 +1,2 @@
+﻿# Netscape HTTP Cookie File
+.example.test	TRUE	/	FALSE	0	bom	ok

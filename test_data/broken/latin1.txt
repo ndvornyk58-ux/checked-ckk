@@ -1,0 +1,2 @@
+# Netscape HTTP Cookie File
+.x.test	TRUE	/	FALSE	0	name	café

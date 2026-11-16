@@ -1,0 +1,2 @@
+{"name": "a", "value": "1", "domain": "example.org", "path": "/", "expiry": 2000000000, "secure": true}
+{"name": "b", "value": "2", "domain": ".example.org", "path": "/x", "httpOnly": true, "sameSite": "None"}

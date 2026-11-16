@@ -3,7 +3,7 @@
 Локальная desktop-платформа для анализа, проверки и аудита безопасности HTTP cookies
 собственных веб-приложений и тестовых сред.
 
-> Статус: **PHASE 1 завершена** — архитектура, модель данных, схема БД, инструменты качества.
+> Статус: **PHASE 2 завершена** — ядро: парсеры, импорт, валидация, шифрование, запросы. GUI — PHASE 3.
 > Подробно: [`docs/STATUS.md`](docs/STATUS.md). Устройство: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Требования
@@ -16,12 +16,17 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-## Запуск
+## Запуск (командная строка; GUI — с PHASE 3)
 ```bash
-python main.py info          # где лежат данные, состояние схемы
-python main.py db upgrade    # создать/обновить базу
-python main.py db status
+python main.py info                                   # где лежат данные, состояние схемы
+python main.py key init                               # создать ключ шифрования (keyring или мастер-пароль)
+python main.py import ./cookies --project demo        # импорт файлов/каталогов + проверка
+python main.py stats --project demo                   # сводка
+python main.py list --project demo --status invalid   # записи (значения не выводятся)
+python main.py validate --project demo                # повторная проверка
 ```
+Форматы: Netscape, JSON (массив, Playwright, одиночный объект), JSON Lines, CSV, CIPX.
+Тестовые файлы — в `test_data/` (`python scripts/gen_test_data.py fixtures` пересоздаёт их).
 
 ### Портативный режим
 Создайте пустой файл `portable.flag` рядом с `main.py` (или с `.exe` сборки) — все данные будут
@@ -31,6 +36,7 @@ python main.py db status
 ```bash
 ./scripts/check.sh           # Linux/macOS
 .\scripts\check.ps1          # Windows PowerShell
+python -m pytest -m perf -s  # производительность (CIP_PERF_N=500000 для большого набора)
 ```
 
 ## Принципы

@@ -1,0 +1,4 @@
+Name;Value;Domain;Path;Expires;HttpOnly;Secure;SameSite
+sid;abc;example.net;/;2030-01-01T00:00:00Z;true;true;Strict
+"q;x";"multi
+line";example.net;/;;no;0;lax

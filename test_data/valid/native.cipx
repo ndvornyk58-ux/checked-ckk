@@ -1,0 +1,3 @@
+{"cipx": 1, "masked": false}
+{"name": "n", "value": "v", "value_state": "present", "domain": "native.test", "host_only": true, "path": "/", "expires": null, "secure": true, "http_only": true, "same_site": "lax"}
+{"name": "enc", "value_state": "browser_encrypted", "domain": "native.test", "host_only": true, "path": "/", "secure": true, "http_only": true, "same_site": "lax"}
