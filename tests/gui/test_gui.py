@@ -11,10 +11,10 @@ from PySide6.QtCore import QMetaMethod, QTimer
 from PySide6.QtGui import QAction, QGuiApplication
 from PySide6.QtWidgets import QAbstractButton, QApplication, QMessageBox
 
+from app.app_context import Workspace
 from app.gui.dialogs.cookie_edit import CookieEditDialog
 from app.gui.dialogs.vault import ChangePasswordDialog, VaultDialog
 from app.gui.shell.main_window import MainWindow
-from app.services.workspace import Workspace
 from tests.conftest import TEST_DATA
 from tests.gui.conftest import PASSWORD, settle
 
@@ -251,7 +251,7 @@ def test_theme_and_project_management(qtbot, window: MainWindow, monkeypatch: py
     window.new_project_btn.click()
     assert window.project_box.currentText().startswith("Второй")
     monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
-    window.show_page(4)
+    window.show_page(window.pages.index(window.settings))
     window.settings.delete_btn.click()
     assert window.project_box.count() == 1 and not window.project_box.currentText().startswith("Второй")
 
@@ -328,7 +328,7 @@ def test_diagnostics_page_end_to_end(
         src.write_text('{"name":"sid","value":"good-session","domain":"127.0.0.1","hostOnly":true}\n')
         unlocked.importer().run(window.project_id, [src])
         page = window.diagnostics
-        window.show_page(3)
+        window.show_page(window.pages.index(page))
         assert page.ep_title.text().startswith("Добавьте адрес") and not page.run_btn.isEnabled()
 
         from app.gui.views.diagnostics import EndpointDialog
@@ -372,10 +372,56 @@ def test_diagnostics_result_not_shown_for_other_endpoint(qtbot, window: MainWind
     ds.add_endpoint(window.project_id, "http://127.0.0.1:9/a", Markers(body_contains=("x",)))
     ds.add_endpoint(window.project_id, "https://app.example.com/b", Markers(body_contains=("x",)))
     page = window.diagnostics
-    window.show_page(3)
+    window.show_page(window.pages.index(page))
     page.list.setCurrentRow(0)
     page.result.setHtml("<p>результат первого адреса</p>")
     page.pair = "pending"
     page.list.setCurrentRow(1)
     assert page.result.toPlainText() == "" and page.pair is None
     assert page.verify_btn.isVisible() and "cookie-inspector-verify=" in page.instructions.toPlainText()
+
+
+def test_batch_page_processes_and_reports(
+    qtbot,
+    window: MainWindow,
+    unlocked: Workspace,  # type: ignore[no-untyped-def]
+    tmp_path: Path,
+) -> None:
+    files = []
+    for i in range(6):
+        p = tmp_path / f"b{i}.jsonl"
+        p.write_text(f'{{"name":"c","value":"v","domain":"d{i}.example.test","secure":true}}\n')
+        files.append(p)
+    bad = tmp_path / "bad.json"
+    bad.write_text("{ broken")
+    files.append(bad)
+
+    page = window.batch
+    window.show_page(window.pages.index(page))
+    assert not page.start_btn.isEnabled()
+    page.add_paths(files)
+    assert page.queue.count() == 7 and page.start_btn.isEnabled()
+    page.workers.setValue(3)
+    page.start_btn.click()
+    settle(qtbot, window)
+    assert page.table.rowCount() == 7
+    assert "ошибками" in page.status_label.text()
+    assert unlocked.cookies.count(window.project_id) == 6
+    assert page.retry_btn.isEnabled() and page.job_id is not None
+
+    bad.write_text('{"name":"c","value":"v","domain":"fixed.example.test"}\n')
+    page.retry_btn.click()
+    settle(qtbot, window)
+    assert unlocked.cookies.count(window.project_id) == 7
+    assert "Готово" in page.status_label.text() and page.job_id is None
+
+
+def test_batch_lock_blocks_start(qtbot, window: MainWindow, unlocked: Workspace, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    p = tmp_path / "f.jsonl"
+    p.write_text('{"name":"c","value":"v","domain":"x.test"}\n')
+    page = window.batch
+    window.show_page(window.pages.index(page))
+    page.add_paths([p])
+    assert page.start_btn.isEnabled()
+    window.settings.lock_btn.click()
+    assert not page.start_btn.isEnabled() and "заблокировано" in page.start_btn.toolTip()

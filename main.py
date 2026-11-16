@@ -14,9 +14,9 @@ def run() -> int:
         from app.cli import main
 
         return main()
+    from app.app_context import Workspace
     from app.bootstrap import build_context
     from app.infrastructure.logging import setup_logging
-    from app.services.workspace import Workspace
 
     ctx = build_context()
     setup_logging(ctx.paths.logs_dir, level=logging.INFO)

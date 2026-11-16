@@ -90,3 +90,20 @@ def test_diag_commands(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.M
         assert main(["diag", "verify", "https://nope.example.com/", "--project", "site"]) == 2
     finally:
         srv.shutdown()
+
+
+def test_batch_commands(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("CIP_MASTER_PASSWORD", "cli-test-password")
+    assert main(["key", "init", "--password"]) == 0
+    good = tmp_path / "a.jsonl"
+    good.write_text('{"name":"x","value":"1","domain":"a.test"}\n')
+    bad = tmp_path / "b.json"
+    bad.write_text("{ broken")
+    assert main(["batch", str(good), str(bad), "--project", "p", "--workers", "2"]) == 1
+    out = capsys.readouterr().out
+    assert "✓ a.jsonl" in out and "✗ b.json" in out and "файлов с ошибками 1" in out
+    job_id = int(out.split("Задача #")[1].split(":")[0])
+    bad.write_text('{"name":"y","value":"2","domain":"b.test"}\n')
+    assert main(["batch-retry", str(job_id), "--project", "p"]) == 0
+    assert "файлов с ошибками 0" in capsys.readouterr().out
+    assert main(["stats", "--project", "p"]) == 0 and "Всего записей : 2" in capsys.readouterr().out

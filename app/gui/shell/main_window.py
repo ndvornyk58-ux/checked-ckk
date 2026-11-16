@@ -20,9 +20,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.app_context import Workspace
 from app.gui.dialogs.vault import VaultDialog
 from app.gui.tasks import TaskRunner
 from app.gui.views.base import Page
+from app.gui.views.batch import BatchPage
 from app.gui.views.cookies import CookiesPage
 from app.gui.views.dashboard import DashboardPage
 from app.gui.views.diagnostics import DiagnosticsPage
@@ -30,7 +32,6 @@ from app.gui.views.import_center import ImportPage
 from app.gui.views.settings import SettingsPage
 from app.gui.widgets.toast import Notifier
 from app.services.projects import ProjectError
-from app.services.workspace import Workspace
 
 
 class MainWindow(QMainWindow):
@@ -63,7 +64,15 @@ class MainWindow(QMainWindow):
         self.dashboard, self.cookies = DashboardPage(*args), CookiesPage(*args)
         self.importer, self.settings = ImportPage(*args), SettingsPage(*args)
         self.diagnostics = DiagnosticsPage(*args)
-        self.pages: list[Page] = [self.dashboard, self.cookies, self.importer, self.diagnostics, self.settings]
+        self.batch = BatchPage(*args)
+        self.pages: list[Page] = [
+            self.dashboard,
+            self.cookies,
+            self.importer,
+            self.batch,
+            self.diagnostics,
+            self.settings,
+        ]
         self.stack = QStackedWidget()
         self.nav = QButtonGroup(self)
         self.nav.setExclusive(True)

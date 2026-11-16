@@ -17,12 +17,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.app_context import Workspace
 from app.gui.tasks import TaskRunner
 from app.gui.theming import SEVERITY_COLORS, SEVERITY_LABELS, STATUS_COLORS, STATUS_LABELS
 from app.gui.views.base import Page
 from app.gui.widgets.charts import STATUS_ORDER, ActivityChart, SpectrumBar
 from app.gui.widgets.toast import Notifier
-from app.services.workspace import Workspace
 
 KIND_LABELS = {
     "import": "Импорт",
@@ -38,6 +38,8 @@ KIND_LABELS = {
     "diag.endpoint": "Диагностика",
     "diag.verify": "Диагностика",
     "diag.run": "Диагностика",
+    "batch.create": "Пакет",
+    "batch": "Пакет",
 }
 
 

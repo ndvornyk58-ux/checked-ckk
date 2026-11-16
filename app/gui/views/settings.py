@@ -16,12 +16,12 @@ from PySide6.QtWidgets import (
 )
 
 from app import __version__
+from app.app_context import Workspace
 from app.gui.dialogs.vault import ChangePasswordDialog
 from app.gui.tasks import TaskRunner
 from app.gui.views.base import Page
 from app.gui.widgets.toast import Notifier
 from app.services.keys import KeyProtection
-from app.services.workspace import Workspace
 
 
 def _section(title: str, text: str) -> tuple[QFrame, QVBoxLayout, QLabel]:

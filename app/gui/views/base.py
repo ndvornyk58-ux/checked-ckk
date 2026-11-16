@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
+from app.app_context import Workspace
 from app.gui.tasks import TaskRunner
 from app.gui.widgets.toast import Notifier
-from app.services.workspace import Workspace
 
 if TYPE_CHECKING:
     from collections.abc import Callable

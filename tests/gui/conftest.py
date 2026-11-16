@@ -12,9 +12,9 @@ from sqlalchemy.orm import Session, sessionmaker
 
 pytest.importorskip("PySide6")
 
+from app.app_context import Workspace
 from app.gui.app import apply_theme, create_app
 from app.gui.shell.main_window import MainWindow
-from app.services.workspace import Workspace
 
 PASSWORD = "gui-test-password"
 

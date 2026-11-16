@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from app.app_context import VaultLockedError, Workspace
 from app.gui.models.cookie_table import fmt_expiry
 from app.gui.tasks import TaskRunner
 from app.gui.theming import STATUS_COLORS
@@ -41,7 +42,6 @@ from app.services.importing import (
     ImportProgress,
     ImportReport,
 )
-from app.services.workspace import VaultLockedError, Workspace
 
 FILE_STATUS = {
     FileStatus.IMPORTED: ("Импортирован", STATUS_COLORS["valid"]),

@@ -32,6 +32,7 @@ from app.services.diagnostics import DiagnosticsError, DiagnosticsService, Endpo
 from app.services.importing import DuplicatePolicy, ImportOptions, ImportProgress, ImportService, iter_reports
 from app.services.projects import ProjectError, ProjectService
 from app.services.validation import ValidationService
+from app.workers.batch import BatchProgress, BatchService, JobKind, JobStatus
 
 
 class CliError(Exception):
@@ -338,6 +339,56 @@ def _cmd_diag_history(a: argparse.Namespace, ctx: AppContext) -> int:
     return 0
 
 
+def _cmd_batch(a: argparse.Namespace, ctx: AppContext) -> int:
+    box = _unlock(ctx)
+    pid = _project_id(ctx, a.project, create=True)
+    bs = BatchService(ctx.sessions, box)
+    kind = JobKind.IMPORT if a.no_validate else JobKind.IMPORT_VALIDATE
+    opts = ImportOptions(duplicates=DuplicatePolicy(a.duplicates), force_reimport=a.force)
+    job_id = bs.create_job(pid, [Path(x) for x in a.paths], kind=kind, options=opts, max_workers=a.workers)
+    print(f"Задача #{job_id}: файлов {bs.job(job_id).total}, потоков {a.workers}")
+
+    def progress(p: BatchProgress) -> None:
+        if sys.stderr.isatty():
+            bar = p.done * 100 // p.total if p.total else 0
+            print(f"\r  {bar:3d}%  {p.done}/{p.total}  записей {p.records_ok}", end="", file=sys.stderr, flush=True)
+
+    try:
+        summary = bs.run_job(job_id, progress=progress)
+    except KeyboardInterrupt:
+        bs.cancel(job_id)
+        raise
+    if sys.stderr.isatty():
+        print(file=sys.stderr)
+    for t in bs.tasks(job_id):
+        mark = {"done": "✓", "failed": "✗", "skipped": "•", "cancelled": "—", "queued": "·", "running": "·"}
+        line = f"  {mark.get(t.status.value, '?')} {t.name}: записей {t.records_ok}"
+        if t.error:
+            line += f" — {t.error}"
+        print(line)
+    print(
+        f"Итог: {summary.status.value}; импортировано {summary.records_ok}, "
+        f"дубликатов {summary.duplicates}, файлов с ошибками {summary.failed_tasks}"
+    )
+    if summary.status is JobStatus.FAILED:
+        print(f"Повторить только ошибки: cookie-inspector batch-retry {job_id} --project {a.project}")
+        return 1
+    return 0
+
+
+def _cmd_batch_retry(a: argparse.Namespace, ctx: AppContext) -> int:
+    box = _unlock(ctx)
+    bs = BatchService(ctx.sessions, box)
+    n = bs.retry_failed(a.job_id)
+    if not n:
+        print("Нет файлов с ошибками для повтора")
+        return 0
+    print(f"Повторная обработка файлов: {n}")
+    summary = bs.run_job(a.job_id)
+    print(f"Итог: {summary.status.value}; файлов с ошибками {summary.failed_tasks}")
+    return 0 if summary.status is not JobStatus.FAILED else 1
+
+
 # ----------------------------------------------------------------------------- разбор аргументов
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="cookie-inspector", description="Cookie Inspector Pro")
@@ -437,6 +488,19 @@ def build_parser() -> argparse.ArgumentParser:
     dh.add_argument("--project", required=True)
     dh.add_argument("--limit", type=int, default=20)
     dh.set_defaults(func=_cmd_diag_history)
+
+    bt = sub.add_parser("batch", help="пакетная обработка множества файлов")
+    bt.add_argument("paths", nargs="+")
+    bt.add_argument("--project", required=True)
+    bt.add_argument("--workers", type=int, default=4)
+    bt.add_argument("--duplicates", choices=[d.value for d in DuplicatePolicy], default=DuplicatePolicy.SKIP.value)
+    bt.add_argument("--force", action="store_true")
+    bt.add_argument("--no-validate", action="store_true")
+    bt.set_defaults(func=_cmd_batch)
+    br = sub.add_parser("batch-retry", help="повторить упавшие файлы пакетной задачи")
+    br.add_argument("job_id", type=int)
+    br.add_argument("--project", required=True)
+    br.set_defaults(func=_cmd_batch_retry)
     return p
 
 

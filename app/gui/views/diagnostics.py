@@ -24,12 +24,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.app_context import Workspace
 from app.gui.tasks import TaskRunner
 from app.gui.theming import STATUS_COLORS
 from app.gui.views.base import Page
 from app.gui.widgets.toast import Notifier
 from app.services.diagnostics import Comparison, DiagnosticResult, EndpointInfo, Markers, Outcome
-from app.services.workspace import Workspace
 
 STATE = {
     "local": ("Локальный адрес", STATUS_COLORS["valid"]),

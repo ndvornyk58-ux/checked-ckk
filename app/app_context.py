@@ -1,4 +1,4 @@
-"""Фасад для слоя представления.
+"""Фасад приложения для слоя представления (composition over services + workers).
 
 GUI получает один объект :class:`Workspace` из composition root и обращается только к нему:
 сервисы, текущий проект и состояние хранилища (заблокировано / разблокировано).
@@ -20,6 +20,7 @@ from app.services.keys import KeyService
 from app.services.projects import ProjectInfo, ProjectService
 from app.services.settings import SettingsService
 from app.services.validation import ValidationService
+from app.workers.batch import BatchService
 
 
 class VaultLockedError(Exception):
@@ -71,6 +72,10 @@ class Workspace:
 
     def importer(self) -> ImportService:
         return ImportService(self._sessions, self._require_box())
+
+    def batch(self) -> BatchService:
+        """Пакетная обработка файлов. Создание задач не требует ключа; запуск — требует."""
+        return BatchService(self._sessions, self._box)
 
     def diagnostics(self) -> DiagnosticsService:
         """Список адресов и история доступны всегда; сама проверка требует разблокированного хранилища."""

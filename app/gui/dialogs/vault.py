@@ -20,9 +20,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.app_context import Workspace
 from app.gui.tasks import TaskRunner
 from app.services.keys import KeyError_, KeyProtection, KeyUnavailableError, WrongKeyError
-from app.services.workspace import Workspace
 
 MIN_PASSWORD = 8
 

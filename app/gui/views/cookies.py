@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from app.app_context import Workspace
 from app.domain import SameSite, Severity, ValidationStatus
 from app.gui.dialogs.cookie_edit import CookieEditDialog
 from app.gui.models.cookie_table import STATUS_SHORT, CookieTableModel, flags, fmt_expiry, value_text
@@ -34,7 +35,6 @@ from app.gui.theming import SEVERITY_COLORS, SEVERITY_LABELS, STATUS_COLORS, STA
 from app.gui.views.base import Page
 from app.gui.widgets.toast import Notifier
 from app.services.cookies import CookieDetail, CookieFilter
-from app.services.workspace import Workspace
 
 CLIPBOARD_CLEAR_MS: Final = 30_000
 

@@ -13,9 +13,9 @@ from typing import Any, Final
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QPersistentModelIndex, Qt
 from PySide6.QtGui import QColor
 
+from app.app_context import Workspace
 from app.gui.theming import SEVERITY_COLORS, SEVERITY_LABELS, STATUS_COLORS, STATUS_LABELS
 from app.services.cookies import CookieFilter, CookieListItem, SortKey
-from app.services.workspace import Workspace
 
 Index = QModelIndex | QPersistentModelIndex
 

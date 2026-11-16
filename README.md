@@ -3,7 +3,7 @@
 Локальная desktop-платформа для анализа, проверки и аудита безопасности HTTP cookies
 собственных веб-приложений и тестовых сред.
 
-> Статус: **PHASE 3 завершена**, из PHASE 4 готова диагностика сессий на своих сайтах ([инструкция](docs/SESSION_DIAGNOSTICS.md)). Подробно: [`docs/STATUS.md`](docs/STATUS.md).
+> Статус: **PHASE 3 завершена**, из PHASE 4 готовы диагностика сессий и пакетная обработка ([инструкция](docs/SESSION_DIAGNOSTICS.md)). Подробно: [`docs/STATUS.md`](docs/STATUS.md).
 
 ![Обзор](docs/screenshots/dashboard.png)
 ![Cookies](docs/screenshots/cookies.png)
@@ -35,6 +35,7 @@ python main.py import ./cookies --project demo        # импорт файло�
 python main.py stats --project demo                   # сводка
 python main.py list --project demo --status invalid   # записи (значения не выводятся)
 python main.py validate --project demo                # повторная проверка
+python main.py batch ./many_files --project demo      # пакетная обработка в несколько потоков
 ```
 Форматы: Netscape, JSON (массив, Playwright, одиночный объект), JSON Lines, CSV, CIPX.
 Тестовые файлы — в `test_data/` (`python scripts/gen_test_data.py fixtures` пересоздаёт их).

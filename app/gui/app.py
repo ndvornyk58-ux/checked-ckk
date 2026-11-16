@@ -8,10 +8,10 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont, QPalette
 from PySide6.QtWidgets import QApplication, QMessageBox
 
+from app.app_context import Workspace
 from app.gui.dialogs.vault import VaultDialog, unlock_without_dialog
 from app.gui.shell.main_window import MainWindow
 from app.gui.theming import THEMES, stylesheet
-from app.services.workspace import Workspace
 
 
 def build_palette(name: str) -> QPalette:

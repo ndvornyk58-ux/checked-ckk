@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.app_context import VaultLockedError, Workspace
 from app.services.keys import KeyProtection, KeyService, WrongKeyError
 from app.services.settings import SettingsService
-from app.services.workspace import VaultLockedError, Workspace
 from tests.conftest import TEST_DATA
 
 
