@@ -47,3 +47,46 @@ def test_keyring_unavailable_falls_back_to_password(
     assert main(["key", "init", "--keyring"]) == 2  # в контейнере нет бэкенда keyring
     assert main(["key", "init"]) == 0
     assert "мастер-пароль" in capsys.readouterr().out
+
+
+def test_diag_commands(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    import threading
+    from http.server import ThreadingHTTPServer
+
+    import httpx
+
+    from tests.integration.test_diagnostics import _Site
+
+    _Site.valid, _Site.forget_logout = {"good-session"}, False
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Site)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        base = f"http://127.0.0.1:{srv.server_address[1]}"
+        url = f"{base}/api/me"
+        monkeypatch.setenv("CIP_MASTER_PASSWORD", "cli-test-password")
+        assert main(["key", "init", "--password"]) == 0
+        src = tmp_path / "c.jsonl"
+        src.write_text('{"name":"sid","value":"good-session","domain":"127.0.0.1","hostOnly":true}\n')
+        assert main(["import", str(src), "--project", "site"]) == 0
+        assert main(["diag", "add", url, "--project", "site"]) == 2
+        assert "код ответа сам по себе" in capsys.readouterr().err
+        assert main(["diag", "add", url, "--project", "site", "--contains", "alice", "--not-contains", "Войти"]) == 0
+        assert "не требуется" in capsys.readouterr().out
+        assert main(["diag", "cookies", url, "--project", "site"]) == 0
+        assert "Нет тестовых сессий" in capsys.readouterr().out
+        assert main(["diag", "mark", "1", "--project", "site"]) == 0
+        assert main(["diag", "run", url, "--project", "site"]) == 0
+        out = capsys.readouterr().out
+        assert "СОВПАЛО" in out and "good-session" not in out
+
+        assert main(["diag", "run", url, "--project", "site", "--phase", "before"]) == 0
+        pair = capsys.readouterr().out.split("--pair ")[1].split()[0]
+        httpx.get(f"{base}/logout", cookies={"sid": "good-session"})
+        assert main(["diag", "run", url, "--project", "site", "--phase", "after", "--pair", pair]) == 0
+        assert "аннулировал" in capsys.readouterr().out
+        assert main(["diag", "history", url, "--project", "site"]) == 0
+        assert len(capsys.readouterr().out.strip().splitlines()) == 3
+        assert main(["diag", "list", "--project", "site"]) == 0 and "локальный" in capsys.readouterr().out
+        assert main(["diag", "verify", "https://nope.example.com/", "--project", "site"]) == 2
+    finally:
+        srv.shutdown()

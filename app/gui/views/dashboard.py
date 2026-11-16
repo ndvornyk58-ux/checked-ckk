@@ -35,6 +35,9 @@ KIND_LABELS = {
     "project.delete": "Проект",
     "key.init": "Хранилище",
     "key.protection": "Хранилище",
+    "diag.endpoint": "Диагностика",
+    "diag.verify": "Диагностика",
+    "diag.run": "Диагностика",
 }
 
 

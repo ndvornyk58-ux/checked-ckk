@@ -25,6 +25,7 @@ from app.gui.tasks import TaskRunner
 from app.gui.views.base import Page
 from app.gui.views.cookies import CookiesPage
 from app.gui.views.dashboard import DashboardPage
+from app.gui.views.diagnostics import DiagnosticsPage
 from app.gui.views.import_center import ImportPage
 from app.gui.views.settings import SettingsPage
 from app.gui.widgets.toast import Notifier
@@ -61,7 +62,8 @@ class MainWindow(QMainWindow):
         args = (ws, self.notifier, self.runner)
         self.dashboard, self.cookies = DashboardPage(*args), CookiesPage(*args)
         self.importer, self.settings = ImportPage(*args), SettingsPage(*args)
-        self.pages: list[Page] = [self.dashboard, self.cookies, self.importer, self.settings]
+        self.diagnostics = DiagnosticsPage(*args)
+        self.pages: list[Page] = [self.dashboard, self.cookies, self.importer, self.diagnostics, self.settings]
         self.stack = QStackedWidget()
         self.nav = QButtonGroup(self)
         self.nav.setExclusive(True)

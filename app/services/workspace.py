@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.infrastructure.crypto import CryptoBox
 from app.services.activity import ActivityService
 from app.services.cookies import CookieService
+from app.services.diagnostics import DiagnosticsService
 from app.services.importing import ImportService
 from app.services.keys import KeyService
 from app.services.projects import ProjectInfo, ProjectService
@@ -70,6 +71,10 @@ class Workspace:
 
     def importer(self) -> ImportService:
         return ImportService(self._sessions, self._require_box())
+
+    def diagnostics(self) -> DiagnosticsService:
+        """Список адресов и история доступны всегда; сама проверка требует разблокированного хранилища."""
+        return DiagnosticsService(self._sessions, self._box)
 
     def validator(self) -> ValidationService:
         return ValidationService(self._sessions, self._require_box())

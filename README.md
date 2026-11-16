@@ -3,7 +3,7 @@
 Локальная desktop-платформа для анализа, проверки и аудита безопасности HTTP cookies
 собственных веб-приложений и тестовых сред.
 
-> Статус: **PHASE 3 завершена** — графический интерфейс поверх ядра. Подробно: [`docs/STATUS.md`](docs/STATUS.md).
+> Статус: **PHASE 3 завершена**, из PHASE 4 готова диагностика сессий на своих сайтах ([инструкция](docs/SESSION_DIAGNOSTICS.md)). Подробно: [`docs/STATUS.md`](docs/STATUS.md).
 
 ![Обзор](docs/screenshots/dashboard.png)
 ![Cookies](docs/screenshots/cookies.png)

@@ -251,7 +251,7 @@ def test_theme_and_project_management(qtbot, window: MainWindow, monkeypatch: py
     window.new_project_btn.click()
     assert window.project_box.currentText().startswith("Второй")
     monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
-    window.show_page(3)
+    window.show_page(4)
     window.settings.delete_btn.click()
     assert window.project_box.count() == 1 and not window.project_box.currentText().startswith("Второй")
 
@@ -305,3 +305,77 @@ def test_drag_and_drop_adds_paths(qtbot, window: MainWindow) -> None:  # type: i
         zone.dropEvent(drop)
     assert [p.name for p in sig.args[0]] == ["netscape.txt"], "сетевые ссылки отбрасываются"
     assert window.importer.queue.count() == 1 and zone.property("active") is False
+
+
+def test_diagnostics_page_end_to_end(
+    qtbot,
+    window: MainWindow,
+    unlocked: Workspace,
+    tmp_path: Path,  # type: ignore[no-untyped-def]
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import threading
+    from http.server import ThreadingHTTPServer
+
+    from tests.integration.test_diagnostics import ME, _Site
+
+    _Site.valid, _Site.forget_logout = {"good-session"}, True  # сайт «забывает» аннулировать сессию
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Site)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        url = f"http://127.0.0.1:{srv.server_address[1]}/api/me"
+        src = tmp_path / "c.jsonl"
+        src.write_text('{"name":"sid","value":"good-session","domain":"127.0.0.1","hostOnly":true}\n')
+        unlocked.importer().run(window.project_id, [src])
+        page = window.diagnostics
+        window.show_page(3)
+        assert page.ep_title.text().startswith("Добавьте адрес") and not page.run_btn.isEnabled()
+
+        from app.gui.views.diagnostics import EndpointDialog
+
+        def fake_exec(dlg: EndpointDialog) -> int:
+            dlg.url.setText(url)
+            dlg.contains.setPlainText("alice")
+            return 1
+
+        monkeypatch.setattr(EndpointDialog, "exec", fake_exec)
+        page.add_btn.click()
+        assert page.current() is not None and page.ep_state.text() == "Локальный адрес"
+        assert page.no_cookies.isVisible() and not page.run_btn.isEnabled()
+
+        unlocked.cookies.set_test_session(unlocked.cookies.ids(window.project_id), True)
+        page.refresh()
+        assert page.cookies_list.count() == 1 and page.run_btn.isEnabled()
+        page.run_btn.click()
+        settle(qtbot, window)
+        assert "соответствует действующей сессии" in page.result.toPlainText()
+
+        page.before_btn.click()
+        settle(qtbot, window)
+        assert page.after_btn.isEnabled() and "Теперь выполните действие" in page.result.toPlainText()
+        import httpx
+
+        httpx.get(url.replace("/api/me", "/logout"), cookies={"sid": "good-session"})
+        page.after_btn.click()
+        settle(qtbot, window)
+        assert "уязвимость" in page.result.toPlainText() and not page.after_btn.isEnabled()
+        assert page.history.count() == 3
+        assert ME.body_contains == ("alice",)
+    finally:
+        srv.shutdown()
+
+
+def test_diagnostics_result_not_shown_for_other_endpoint(qtbot, window: MainWindow, unlocked: Workspace) -> None:  # type: ignore[no-untyped-def]
+    from app.services.diagnostics import Markers
+
+    ds = unlocked.diagnostics()
+    ds.add_endpoint(window.project_id, "http://127.0.0.1:9/a", Markers(body_contains=("x",)))
+    ds.add_endpoint(window.project_id, "https://app.example.com/b", Markers(body_contains=("x",)))
+    page = window.diagnostics
+    window.show_page(3)
+    page.list.setCurrentRow(0)
+    page.result.setHtml("<p>результат первого адреса</p>")
+    page.pair = "pending"
+    page.list.setCurrentRow(1)
+    assert page.result.toPlainText() == "" and page.pair is None
+    assert page.verify_btn.isVisible() and "cookie-inspector-verify=" in page.instructions.toPlainText()

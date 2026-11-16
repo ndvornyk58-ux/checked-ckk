@@ -14,6 +14,9 @@ def test_redact_patterns() -> None:
         '{"name": "sid", "value": "abc123"}': "abc123",
         "value=abc123 next": "abc123",
         "token: abc123,": "abc123",
+        "[(b'Set-Cookie', b'sid=abc123; HttpOnly')]": "abc123",
+        "[(b'cookie', b'sid=abc123')]": "abc123",
+        "(b'Authorization', b'Bearer abc123')": "abc123",
     }
     for text, secret in cases.items():
         assert secret not in redact(text), text

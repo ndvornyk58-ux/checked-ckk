@@ -19,6 +19,9 @@ MASK: Final = "[REDACTED]"
 _PATTERNS: Final = (
     re.compile(r"(?im)^((?:set-)?cookie\s*:\s*).+$"),
     re.compile(r"(?i)(authorization\s*:\s*)\S+(?:\s+\S+)?"),
+    # заголовки в виде байтовых кортежей: (b'Set-Cookie', b'...') — так их пишут HTTP-библиотеки
+    re.compile(r"(?i)(\(b?['\"](?:set-)?cookie['\"],\s*b?['\"])[^'\"]*"),
+    re.compile(r"(?i)(\(b?['\"]authorization['\"],\s*b?['\"])[^'\"]*"),
     re.compile(r'(?i)("(?:value|token|password|secret|session(?:id)?|cookie)"\s*:\s*)"(?:[^"\\]|\\.)*"'),
     re.compile(r"(?i)\b((?:value|token|password|passwd|secret|sessionid|session_id|cookie)\s*[=:]\s*)[^\s,;&]+"),
 )

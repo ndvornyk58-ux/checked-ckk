@@ -28,6 +28,7 @@ from app.infrastructure.crypto import (
 from app.infrastructure.db import migrations
 from app.services.common import CancelToken
 from app.services.cookies import CookieFilter, CookieService, SortKey
+from app.services.diagnostics import DiagnosticsError, DiagnosticsService, EndpointInfo, Markers, Outcome
 from app.services.importing import DuplicatePolicy, ImportOptions, ImportProgress, ImportService, iter_reports
 from app.services.projects import ProjectError, ProjectService
 from app.services.validation import ValidationService
@@ -223,6 +224,120 @@ def _cmd_list(a: argparse.Namespace, ctx: AppContext) -> int:
     return 0
 
 
+_OUTCOME = {
+    Outcome.MATCHED: "СОВПАЛО — ответ соответствует действующей сессии",
+    Outcome.NOT_MATCHED: "НЕ СОВПАЛО — ответ не соответствует ожидаемому",
+    Outcome.ERROR: "ОШИБКА — запрос не выполнен",
+}
+
+
+def _endpoint(
+    ctx: AppContext, project: str, url: str, box: CryptoBox | None = None
+) -> tuple[DiagnosticsService, EndpointInfo]:
+    ds = DiagnosticsService(ctx.sessions, box)
+    ep = next((e for e in ds.endpoints(_project_id(ctx, project)) if e.url == url), None)
+    if ep is None:
+        raise CliError(f"Адрес {url} не добавлен. Сначала: cookie-inspector diag add {url} --project {project} ...")
+    return ds, ep
+
+
+def _cmd_diag_add(a: argparse.Namespace, ctx: AppContext) -> int:
+    ds = DiagnosticsService(ctx.sessions, None)
+    m = Markers(
+        status=tuple(a.status or [200]),
+        body_contains=tuple(a.contains or []),
+        body_not_contains=tuple(a.not_contains or []),
+        location_contains=a.location,
+    )
+    ep = ds.add_endpoint(_project_id(ctx, a.project, create=True), a.url, m)
+    print(f"Адрес добавлен: {ep.url}")
+    print(ds.verification_instructions(ep.id))
+    return 0
+
+
+def _cmd_diag_list(a: argparse.Namespace, ctx: AppContext) -> int:
+    ds = DiagnosticsService(ctx.sessions, None)
+    for e in ds.endpoints(_project_id(ctx, a.project)):
+        state = {"local": "локальный", "verified": "подтверждён", "unverified": "не подтверждён"}[e.state]
+        print(f"{e.url}  [{state}{'' if e.usable or e.state != 'verified' else ', подтверждение устарело'}]")
+        print(
+            f"    маркеры: код {list(e.markers.status)}, содержит {list(e.markers.body_contains)}, "
+            f"не содержит {list(e.markers.body_not_contains)}"
+            + (f", Location содержит {e.markers.location_contains!r}" if e.markers.location_contains else "")
+        )
+    return 0
+
+
+def _cmd_diag_instructions(a: argparse.Namespace, ctx: AppContext) -> int:
+    ds, ep = _endpoint(ctx, a.project, a.url)
+    print(ds.verification_instructions(ep.id))
+    return 0
+
+
+def _cmd_diag_verify(a: argparse.Namespace, ctx: AppContext) -> int:
+    ds, ep = _endpoint(ctx, a.project, a.url)
+    ds.verify(ep.id)
+    print(f"Владение {ep.host} подтверждено. Теперь можно запускать проверку.")
+    return 0
+
+
+def _cmd_diag_mark(a: argparse.Namespace, ctx: AppContext) -> int:
+    CookieService(ctx.sessions).set_test_session(a.ids, not a.unmark)
+    print(("Снята отметка" if a.unmark else "Отмечено как тестовая сессия") + f": {len(a.ids)}")
+    return 0
+
+
+def _cmd_diag_cookies(a: argparse.Namespace, ctx: AppContext) -> int:
+    ds, ep = _endpoint(ctx, a.project, a.url)
+    found = ds.matching_cookies(ep.id)
+    if not found:
+        print("Нет тестовых сессий для этого адреса. Отметьте cookie: cookie-inspector diag mark ID --project ...")
+    for cid, name, domain in found:
+        print(f"{cid:>7}  {name}  ({domain})")
+    return 0
+
+
+def _cmd_diag_run(a: argparse.Namespace, ctx: AppContext) -> int:
+    ds, ep = _endpoint(ctx, a.project, a.url, _unlock(ctx))
+    ids = a.cookie or [c[0] for c in ds.matching_cookies(ep.id)]
+    pair = a.pair or (ds.new_pair() if a.phase == "before" else None)
+    if a.phase == "after" and not pair:
+        raise CliError("Для --phase after укажите --pair из проверки «до»")
+    r = ds.run(ep.id, ids, phase=a.phase, pair_id=pair)
+    print(f"Результат: {_OUTCOME[r.outcome]}")
+    if r.status_code is not None:
+        print(f"Код ответа: {r.status_code}, {r.elapsed_ms} мс" + (f", Location: {r.location}" if r.location else ""))
+    for c in r.checks:
+        print(f"  {'✓' if c.ok else '✗'} {c.marker}: {c.expected}")
+    print("Отправлены: " + ", ".join(r.sent_cookies))
+    for line in [*r.skipped_cookies, *r.warnings]:
+        print(f"  ! {line}")
+    if r.set_cookie_names:
+        print("Сервер установил cookies: " + ", ".join(r.set_cookie_names))
+    if r.error:
+        print(f"Ошибка: {r.error}")
+    if a.phase == "before":
+        print(
+            f"\nТеперь выполните действие (например, выйдите из аккаунта на сайте) и запустите:\n"
+            f"  cookie-inspector diag run {a.url} --project {a.project} --phase after --pair {pair}"
+        )
+    if a.phase == "after" and pair:
+        verdict = ds.compare_pair(pair)
+        print(("\n⚠ " if verdict.problem else "\n") + verdict.verdict)
+        return 3 if verdict.problem else 0
+    return 0 if r.outcome is Outcome.MATCHED else 1
+
+
+def _cmd_diag_history(a: argparse.Namespace, ctx: AppContext) -> int:
+    ds, ep = _endpoint(ctx, a.project, a.url)
+    for r in ds.history(ep.id, a.limit):
+        print(
+            f"#{r.run_id:<5} {r.outcome.value:12} код {r.status_code or '—':<4} {r.phase or '':7} "
+            f"{', '.join(r.sent_cookies)}"
+        )
+    return 0
+
+
 # ----------------------------------------------------------------------------- разбор аргументов
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="cookie-inspector", description="Cookie Inspector Pro")
@@ -281,6 +396,47 @@ def build_parser() -> argparse.ArgumentParser:
     ls.add_argument("--sort", choices=[s.value for s in SortKey], default=SortKey.IMPORTED.value)
     ls.add_argument("--limit", type=int, default=50)
     ls.set_defaults(func=_cmd_list)
+    dg = sub.add_parser("diag", help="диагностика тестовых сессий на своих адресах").add_subparsers(
+        dest="diag_command", required=True
+    )
+    da = dg.add_parser("add", help="добавить адрес и ожидаемые маркеры")
+    da.add_argument("url")
+    da.add_argument("--project", required=True)
+    da.add_argument("--status", type=int, action="append", help="ожидаемый код ответа (можно несколько)")
+    da.add_argument("--contains", action="append", help="текст, который должен быть в ответе")
+    da.add_argument("--not-contains", action="append", help="текст, которого не должно быть (например «Войти»)")
+    da.add_argument("--location", help="подстрока заголовка Location (для ожидаемых редиректов)")
+    da.set_defaults(func=_cmd_diag_add)
+    for name, fn, hlp in (("list", _cmd_diag_list, "адреса проекта"),):
+        x = dg.add_parser(name, help=hlp)
+        x.add_argument("--project", required=True)
+        x.set_defaults(func=fn)
+    for name, fn, hlp in (
+        ("instructions", _cmd_diag_instructions, "как подтвердить владение доменом"),
+        ("verify", _cmd_diag_verify, "проверить файл подтверждения на сайте"),
+        ("cookies", _cmd_diag_cookies, "тестовые сессии, подходящие к адресу"),
+    ):
+        x = dg.add_parser(name, help=hlp)
+        x.add_argument("url")
+        x.add_argument("--project", required=True)
+        x.set_defaults(func=fn)
+    dm = dg.add_parser("mark", help="отметить cookies как тестовые сессии")
+    dm.add_argument("ids", type=int, nargs="+")
+    dm.add_argument("--project", required=True)
+    dm.add_argument("--unmark", action="store_true")
+    dm.set_defaults(func=_cmd_diag_mark)
+    dr = dg.add_parser("run", help="проверить тестовую сессию")
+    dr.add_argument("url")
+    dr.add_argument("--project", required=True)
+    dr.add_argument("--cookie", type=int, action="append", help="id cookie (по умолчанию — все подходящие тестовые)")
+    dr.add_argument("--phase", choices=["before", "after"])
+    dr.add_argument("--pair")
+    dr.set_defaults(func=_cmd_diag_run)
+    dh = dg.add_parser("history", help="история проверок адреса")
+    dh.add_argument("url")
+    dh.add_argument("--project", required=True)
+    dh.add_argument("--limit", type=int, default=20)
+    dh.set_defaults(func=_cmd_diag_history)
     return p
 
 
@@ -290,7 +446,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         result: int = args.func(args, ctx)
         return result
-    except (CliError, ProjectError, FileNotFoundError) as e:
+    except (CliError, ProjectError, DiagnosticsError, FileNotFoundError) as e:
         print(f"Ошибка: {e}", file=sys.stderr)
         return 2
     finally:
