@@ -1,0 +1,3 @@
+# Источник истины — pyproject.toml. Этот файл для установки одной командой:
+#   pip install -r requirements.txt
+-e .[dev]

@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.import_linter_cache/
+.coverage
+htmlcov/
+
+# Данные приложения и секреты — никогда не в репозиторий
+data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.key
+*.log
+logs/
+backups/
+portable.flag
+
+# Пользовательские файлы cookies (реальные данные). Тестовые фикстуры лежат в test_data/ и разрешены явно.
+*.cookies
+cookies.txt
+cookies*.json
+!test_data/**
