@@ -10,6 +10,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
+from app.domain.presentation import (
+    SEVERITY_COLORS as SEVERITY_COLORS,
+)
+from app.domain.presentation import (
+    SEVERITY_LABELS as SEVERITY_LABELS,
+)
+from app.domain.presentation import (
+    STATUS_COLORS as STATUS_COLORS,
+)
+from app.domain.presentation import (
+    STATUS_LABELS as STATUS_LABELS,
+)
+
 
 @dataclass(frozen=True, slots=True)
 class Palette:
@@ -34,36 +47,6 @@ LIGHT: Final = Palette(
 THEMES: Final = {"dark": DARK, "light": LIGHT}
 
 # Цвета статусов одинаковы по смыслу в обеих темах; подобраны для контраста на обоих фонах.
-STATUS_COLORS: Final = {
-    "valid": "#3FA77A",
-    "warning": "#D9A23A",
-    "expired": "#8B7FC7",
-    "invalid": "#D9584E",
-    "security_issue": "#E0364F",
-    "unknown": "#7D8794",
-}
-SEVERITY_COLORS: Final = {
-    "critical": "#E0364F",
-    "high": "#E06A3F",
-    "medium": "#D9A23A",
-    "low": "#5B9BD5",
-    "informational": "#7D8794",
-}
-STATUS_LABELS: Final = {
-    "valid": "Корректные",
-    "warning": "С замечаниями",
-    "expired": "Истекшие",
-    "invalid": "Некорректные",
-    "security_issue": "Проблемы безопасности",
-    "unknown": "Не определено",
-}
-SEVERITY_LABELS: Final = {
-    "critical": "Критическая",
-    "high": "Высокая",
-    "medium": "Средняя",
-    "low": "Низкая",
-    "informational": "Информация",
-}
 FONT_STACK: Final = '"Segoe UI", "Inter", "Noto Sans", "Helvetica Neue", Arial, sans-serif'
 
 

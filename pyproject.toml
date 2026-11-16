@@ -35,6 +35,9 @@ include = ["app*"]
 [tool.setuptools.package-data]
 "app.infrastructure.db" = ["alembic.ini", "alembic/*.py", "alembic/versions/*.py", "alembic/script.py.mako"]
 
+[tool.setuptools.data-files]
+"resources/fonts" = ["resources/fonts/DejaVuSans.ttf", "resources/fonts/DejaVuSans-Bold.ttf"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers -m 'not perf' --timeout=120"
@@ -68,6 +71,11 @@ plugins = []
 [[tool.mypy.overrides]]
 module = ["app.domain.*", "app.rules.*", "app.parsers.*", "app.services.*"]
 strict = true
+
+[[tool.mypy.overrides]]
+# У reportlab, openpyxl и jinja2 нет типовых заглушек; их импорты в export.py не типизируем.
+module = ["reportlab.*", "openpyxl.*", "jinja2.*"]
+ignore_missing_imports = true
 
 [tool.importlinter]
 root_package = "app"

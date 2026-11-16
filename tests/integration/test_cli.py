@@ -132,3 +132,21 @@ def test_diag_run_all(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.Mo
         assert "СОВПАЛО" in out and "сессия принята на 1" in out
     finally:
         srv.shutdown()
+
+
+def test_export_command(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("CIP_MASTER_PASSWORD", "cli-test-password")
+    assert main(["key", "init", "--password"]) == 0
+    src = tmp_path / "c.jsonl"
+    src.write_text('{"name":"sid","value":"SECRET-XYZ","domain":"x.example.test"}\n')
+    assert main(["import", str(src), "--project", "p"]) == 0
+    out_csv = tmp_path / "r.csv"
+    assert main(["export", str(out_csv), "--project", "p", "--format", "csv"]) == 0
+    assert "замаскированы" in capsys.readouterr().out
+    assert "SECRET-XYZ" not in out_csv.read_text(encoding="utf-8-sig")
+    out_pdf = tmp_path / "r.pdf"
+    assert main(["export", str(out_pdf), "--project", "p", "--format", "pdf"]) == 0
+    assert out_pdf.read_bytes().startswith(b"%PDF-")
+    out2 = tmp_path / "plain.csv"
+    assert main(["export", str(out2), "--project", "p", "--columns", "name", "value", "--reveal-values"]) == 0
+    assert "открытом виде" in capsys.readouterr().out and "SECRET-XYZ" in out2.read_text(encoding="utf-8-sig")

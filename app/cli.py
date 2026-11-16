@@ -29,6 +29,7 @@ from app.infrastructure.db import migrations
 from app.services.common import CancelToken
 from app.services.cookies import CookieFilter, CookieService, SortKey
 from app.services.diagnostics import DiagnosticsError, DiagnosticsService, EndpointInfo, Markers, Outcome
+from app.services.export import Column, ExportError, ExportFormat, ExportOptions, ExportService
 from app.services.importing import DuplicatePolicy, ImportOptions, ImportProgress, ImportService, iter_reports
 from app.services.projects import ProjectError, ProjectService
 from app.services.validation import ValidationService
@@ -207,6 +208,30 @@ def _cmd_stats(a: argparse.Namespace, ctx: AppContext) -> int:
     )
     for k, v in sorted(st.by_status.items()):
         print(f"  {k:15} {v}")
+    return 0
+
+
+def _cmd_export(a: argparse.Namespace, ctx: AppContext) -> int:
+    box = _unlock(ctx) if a.reveal_values else None  # ключ нужен только для выгрузки открытых значений
+    es = ExportService(ctx.sessions, box)
+    pid = _project_id(ctx, a.project)
+    f = CookieFilter(text=a.search, statuses=frozenset(ValidationStatus(s) for s in a.status or []))
+    cols = tuple(Column(c) for c in a.columns) if a.columns else None
+    opts = ExportOptions(fmt=ExportFormat(a.format), reveal_values=a.reveal_values, title=a.title or "Отчёт по cookies")
+    if cols:
+        opts = ExportOptions(
+            fmt=ExportFormat(a.format), columns=cols, reveal_values=a.reveal_values, title=a.title or "Отчёт по cookies"
+        )
+    if a.reveal_values:
+        print("ВНИМАНИЕ: значения cookies будут выгружены в открытом виде.", file=sys.stderr)
+    try:
+        res = es.export(pid, Path(a.output), opts, filter=f)
+    except ExportError as e:
+        raise CliError(str(e)) from e
+    print(
+        f"Экспортировано записей: {res.rows} → {res.path}"
+        + ("  (значения в открытом виде)" if res.values_revealed else "  (значения замаскированы)")
+    )
     return 0
 
 
@@ -459,6 +484,21 @@ def build_parser() -> argparse.ArgumentParser:
     stt = sub.add_parser("stats", help="сводка по проекту")
     stt.add_argument("--project", required=True)
     stt.set_defaults(func=_cmd_stats)
+    ex = sub.add_parser("export", help="выгрузить записи и отчёт в файл")
+    ex.add_argument("output")
+    ex.add_argument("--project", required=True)
+    ex.add_argument("--format", choices=[f.value for f in ExportFormat], default=ExportFormat.CSV.value)
+    ex.add_argument("--columns", nargs="+", choices=[c.value for c in Column])
+    ex.add_argument("--search")
+    ex.add_argument("--status", action="append", choices=[s.value for s in ValidationStatus])
+    ex.add_argument("--title")
+    ex.add_argument(
+        "--reveal-values",
+        action="store_true",
+        help="выгрузить значения в открытом виде (требует мастер-пароль, пишется в журнал)",
+    )
+    ex.set_defaults(func=_cmd_export)
+
     ls = sub.add_parser("list", help="список записей (значения не выводятся)")
     ls.add_argument("--project", required=True)
     ls.add_argument("--search")

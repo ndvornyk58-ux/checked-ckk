@@ -187,10 +187,12 @@ class CookiesPage(Page):
         self.secure = _combo([("Secure: любой", None), ("С Secure", True), ("Без Secure", False)])
         self.samesite = _combo([("SameSite: любой", None)] + [(s.value, s.value) for s in SameSite])
         self.reset_btn = QPushButton("Сбросить фильтры")
+        self.export_btn = QPushButton("Экспорт…")
         bar.addWidget(self.search, 2)
         for w in (self.status, self.severity, self.expiry, self.secure, self.samesite):
             bar.addWidget(w)
         bar.addWidget(self.reset_btn)
+        bar.addWidget(self.export_btn)
         self.root.addLayout(bar)
 
         split = QSplitter(Qt.Orientation.Horizontal)
@@ -241,6 +243,7 @@ class CookiesPage(Page):
         for c in (self.status, self.severity, self.expiry, self.secure, self.samesite):
             c.currentIndexChanged.connect(lambda _i: self.apply_filters())
         self.reset_btn.clicked.connect(lambda: self.reset_filters())
+        self.export_btn.clicked.connect(self.export)
         self.domains.currentItemChanged.connect(self._domain_selected)
         self.table.horizontalHeader().sectionClicked.connect(self._sort_clicked)
         self.table.selectionModel().selectionChanged.connect(lambda *_: self._selection_changed())
@@ -403,6 +406,34 @@ class CookiesPage(Page):
         self.notify.show(message, "success")
         self.apply_filters()
         self.on_data_changed()
+
+    def export(self) -> None:
+        if self.project_id is None:
+            return
+        from app.gui.dialogs.export import ExportDialog
+        from app.services.export import ExportResult
+
+        f = self.current_filter()
+        count = self.ws.cookies.count(self.project_id, f)
+        dlg = ExportDialog(count, self.ws.unlocked, self)
+        if not dlg.exec():
+            return
+        path, opts, pid = dlg.result_path(), dlg.options(), self.project_id
+        if path is None:
+            return
+        exporter = self.ws.exporter()
+        self.export_btn.setEnabled(False)
+
+        def done(result: ExportResult) -> None:
+            self.export_btn.setEnabled(True)
+            note = " (значения в открытом виде)" if result.values_revealed else ""
+            self.notify.show(f"Экспортировано записей: {result.rows} → {result.path.name}{note}", "success")
+
+        def fail(exc: Exception) -> None:
+            self.export_btn.setEnabled(True)
+            self.error(exc)
+
+        self.runner.start(lambda _p: exporter.export(pid, path, opts, filter=f), on_done=done, on_error=fail)
 
     def revalidate(self) -> None:
         ids, pid = self.selected_ids(), self.project_id

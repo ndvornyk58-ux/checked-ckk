@@ -486,3 +486,52 @@ def test_diagnostics_sweep_disabled_when_locked(qtbot, window: MainWindow, unloc
     assert page.sweep_btn.isEnabled()
     window.settings.lock_btn.click()
     assert not page.sweep_btn.isEnabled() and "заблокировано" in page.sweep_btn.toolTip()
+
+
+def test_export_dialog_and_run(
+    qtbot,
+    window: MainWindow,
+    unlocked: Workspace,
+    tmp_path: Path,  # type: ignore[no-untyped-def]
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.gui.dialogs.export import ExportDialog
+    from app.services.export import ExportFormat
+
+    src = tmp_path / "c.jsonl"
+    src.write_text('{"name":"sid","value":"SECRET-LEAK-TEST","domain":"x.example.test"}\n')
+    unlocked.importer().run(window.project_id, [src])
+    page = window.cookies
+    window.show_page(window.pages.index(page))
+    assert page.export_btn.isEnabled()
+
+    out = tmp_path / "export.csv"
+
+    def fake_exec(self: ExportDialog) -> int:
+        self.format.setCurrentIndex(self.format.findData(ExportFormat.CSV.value))
+        self._path = out  # type: ignore[attr-defined]
+        return 1
+
+    monkeypatch.setattr(ExportDialog, "exec", fake_exec)
+    page.export_btn.click()
+    settle(qtbot, window)
+    assert out.exists()
+    text = out.read_text(encoding="utf-8-sig")
+    assert "SECRET-LEAK-TEST" not in text, "значения не выгружаются без явного согласия"
+    assert "x.example.test" in text
+
+
+def test_export_dialog_value_column_gated_by_reveal(qtbot, unlocked: Workspace) -> None:  # type: ignore[no-untyped-def]
+    from app.gui.dialogs.export import ExportDialog
+    from app.services.export import Column
+
+    dlg = ExportDialog(10, unlocked=True)
+    qtbot.addWidget(dlg)
+    assert not dlg.columns[Column.VALUE].isEnabled() and not dlg.reveal.isChecked()
+    dlg.reveal.setChecked(True)
+    assert dlg.columns[Column.VALUE].isEnabled() and dlg.columns[Column.VALUE].isChecked()
+    assert dlg.options().reveal_values and Column.VALUE in dlg.options().columns
+
+    locked = ExportDialog(10, unlocked=False)
+    qtbot.addWidget(locked)
+    assert not locked.reveal.isEnabled()

@@ -15,6 +15,7 @@ from app.infrastructure.crypto import CryptoBox
 from app.services.activity import ActivityService
 from app.services.cookies import CookieService
 from app.services.diagnostics import DiagnosticsService
+from app.services.export import ExportService
 from app.services.importing import ImportService
 from app.services.keys import KeyService
 from app.services.projects import ProjectInfo, ProjectService
@@ -72,6 +73,10 @@ class Workspace:
 
     def importer(self) -> ImportService:
         return ImportService(self._sessions, self._require_box())
+
+    def exporter(self) -> ExportService:
+        """Экспорт. Чтение метаданных — без ключа; выгрузка значений в открытом виде — только с ключом."""
+        return ExportService(self._sessions, self._box)
 
     def batch(self) -> BatchService:
         """Пакетная обработка файлов. Создание задач не требует ключа; запуск — требует."""
