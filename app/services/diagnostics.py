@@ -140,6 +140,23 @@ class Comparison:
     problem: bool
 
 
+@dataclass(frozen=True, slots=True)
+class SweepRow:
+    """Строка сводки по одному адресу при прогоне набора cookies по нескольким своим сайтам."""
+
+    endpoint_id: int
+    host: str
+    url: str
+    usable: bool
+    matched_cookie_ids: tuple[int, ...]
+    result: DiagnosticResult | None
+    skipped_reason: str | None = None
+
+    @property
+    def outcome(self) -> Outcome | None:
+        return self.result.outcome if self.result else None
+
+
 def _expired(verified_at: int | None) -> bool:
     return verified_at is None or now_ts() - verified_at > VERIFY_TTL_DAYS * 86400
 
@@ -409,6 +426,44 @@ class DiagnosticsService:
         return self._save(
             info, cookie_ids, started, res, outcome, checks, sent_names, skipped, warnings, phase, pair_id
         )
+
+    def run_across_endpoints(
+        self,
+        project_id: int,
+        *,
+        cookie_ids: list[int] | None = None,
+    ) -> list[SweepRow]:
+        """Прогнать тестовые сессии по всем пригодным адресам проекта и свести результат.
+
+        Для каждого адреса отправляются только те из ``cookie_ids`` (или все тестовые сессии
+        проекта, если не заданы), которые подходят к адресу по RFC 6265. Неподтверждённые адреса
+        и адреса без подходящих cookies не опрашиваются, а попадают в сводку с причиной пропуска.
+        Это не массовая проверка чужих сессий: все адреса принадлежат проекту и проходят allowlist
+        и подтверждение владения (ADR-0004).
+        """
+        rows: list[SweepRow] = []
+        for ep in self.endpoints(project_id):
+            matching = [c[0] for c in self.matching_cookies(ep.id)]
+            if cookie_ids is not None:
+                matching = [cid for cid in matching if cid in set(cookie_ids)]
+            if not ep.usable:
+                reason = (
+                    "владение доменом не подтверждено" if ep.state != "verified" else "подтверждение владения устарело"
+                )
+                rows.append(SweepRow(ep.id, ep.host, ep.url, False, (), None, reason))
+                continue
+            if not matching:
+                rows.append(
+                    SweepRow(ep.id, ep.host, ep.url, True, (), None, "нет подходящих тестовых cookies для этого адреса")
+                )
+                continue
+            try:
+                result = self.run(ep.id, matching)
+            except DiagnosticsError as e:
+                rows.append(SweepRow(ep.id, ep.host, ep.url, True, tuple(matching), None, str(e)))
+                continue
+            rows.append(SweepRow(ep.id, ep.host, ep.url, True, tuple(matching), result))
+        return rows
 
     def new_pair(self) -> str:
         return str(uuid.uuid4())

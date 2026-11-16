@@ -276,3 +276,51 @@ def test_values_never_reach_logs_or_db(
         if f.exists():
             raw = f.read_bytes()
             assert b"good-session" not in raw and b"rotated-secret" not in raw
+
+
+def test_run_across_endpoints_sweeps_only_own_sites(
+    svc: Services, diag: DiagnosticsService, site: str, tmp_path: Path
+) -> None:
+    """Прогон набора cookies по нескольким своим адресам: по локальному — запрос, по
+    неподтверждённому публичному — пропуск без обращения к сети."""
+    diag.add_endpoint(svc.project_id, f"{site}/api/me", ME)
+    # публичный адрес без подтверждения владения — в сеть за ним не ходим
+    diag.add_endpoint(svc.project_id, "https://app.example.com/api/me", ME)
+    good = _cookie(svc, tmp_path, "good-session")
+    # cookie для другого хоста — не подойдёт ни к одному из адресов 127.0.0.1
+    _cookie(svc, tmp_path, "x", domain="other.example.com", name="o")
+
+    rows = diag.run_across_endpoints(svc.project_id)
+    by_host = {r.host: r for r in rows}
+    assert set(by_host) == {"127.0.0.1", "app.example.com"}
+
+    local = by_host["127.0.0.1"]
+    assert local.usable and local.outcome is Outcome.MATCHED
+    assert local.matched_cookie_ids == (good,), "отправлена только подходящая тестовая cookie"
+
+    public = by_host["app.example.com"]
+    assert not public.usable and public.outcome is None
+    assert public.skipped_reason and "не подтверждено" in public.skipped_reason
+
+
+def test_run_across_endpoints_filters_cookies(
+    svc: Services, diag: DiagnosticsService, site: str, tmp_path: Path
+) -> None:
+    ep = diag.add_endpoint(svc.project_id, f"{site}/api/me", ME)
+    good = _cookie(svc, tmp_path, "good-session")
+    stale = _cookie(svc, tmp_path, "stale", name="sid2")
+    # ограничиваем набор только устаревшей cookie -> маркеры не совпадут
+    rows = diag.run_across_endpoints(svc.project_id, cookie_ids=[stale])
+    assert len(rows) == 1 and rows[0].matched_cookie_ids == (stale,)
+    assert rows[0].outcome is Outcome.NOT_MATCHED
+    # пустой проектный фильтр по подходящим: адрес с cookie, которой нет среди выбранных
+    rows2 = diag.run_across_endpoints(svc.project_id, cookie_ids=[good])
+    assert rows2[0].outcome is Outcome.MATCHED
+    assert ep.id == rows2[0].endpoint_id
+
+
+def test_run_across_endpoints_reports_no_matching_cookies(svc: Services, diag: DiagnosticsService, site: str) -> None:
+    diag.add_endpoint(svc.project_id, f"{site}/api/me", ME)
+    rows = diag.run_across_endpoints(svc.project_id)
+    assert len(rows) == 1 and rows[0].usable and rows[0].outcome is None
+    assert "нет подходящих" in (rows[0].skipped_reason or "")

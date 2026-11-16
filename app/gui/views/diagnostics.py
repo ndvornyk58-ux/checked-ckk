@@ -6,11 +6,14 @@ import html
 from typing import Any
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QDialog,
+    QDialogButtonBox,
     QFormLayout,
     QFrame,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -19,6 +22,8 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QSplitter,
+    QTableWidget,
+    QTableWidgetItem,
     QTextBrowser,
     QVBoxLayout,
     QWidget,
@@ -29,7 +34,14 @@ from app.gui.tasks import TaskRunner
 from app.gui.theming import STATUS_COLORS
 from app.gui.views.base import Page
 from app.gui.widgets.toast import Notifier
-from app.services.diagnostics import Comparison, DiagnosticResult, EndpointInfo, Markers, Outcome
+from app.services.diagnostics import (
+    Comparison,
+    DiagnosticResult,
+    EndpointInfo,
+    Markers,
+    Outcome,
+    SweepRow,
+)
 
 STATE = {
     "local": ("Локальный адрес", STATUS_COLORS["valid"]),
@@ -144,7 +156,10 @@ class DiagnosticsPage(Page):
         self.add_btn = QPushButton("Добавить адрес…")
         self.remove_btn = QPushButton("Удалить адрес")
         self.remove_btn.setProperty("danger", True)
+        self.sweep_btn = QPushButton("Проверить все мои сайты")
+        self.sweep_btn.setToolTip("Прогнать отмеченные тестовые сессии по всем подтверждённым адресам проекта")
         ll.addWidget(self.list, 1)
+        ll.addWidget(self.sweep_btn)
         ll.addWidget(self.add_btn)
         ll.addWidget(self.remove_btn)
         split.addWidget(left)
@@ -201,6 +216,7 @@ class DiagnosticsPage(Page):
         self.root.addWidget(split, 1)
 
         self.list.currentItemChanged.connect(lambda *_: self._show_endpoint())
+        self.sweep_btn.clicked.connect(self.run_all)
         self.add_btn.clicked.connect(self.add_endpoint)
         self.remove_btn.clicked.connect(self.remove_endpoint)
         self.verify_btn.clicked.connect(self.verify)
@@ -283,6 +299,12 @@ class DiagnosticsPage(Page):
         ready = bool(e and e.usable and self.cookies_list.count() and self.ws.unlocked and not self._busy)
         self.no_cookies.setVisible(bool(e) and self.cookies_list.count() == 0)
         self.remove_btn.setEnabled(e is not None)
+        self.sweep_btn.setEnabled(self.list.count() > 0 and self.ws.unlocked and not self._busy)
+        self.sweep_btn.setToolTip(
+            "Хранилище заблокировано"
+            if not self.ws.unlocked
+            else "Прогнать отмеченные тестовые сессии по всем подтверждённым адресам проекта"
+        )
         self.run_btn.setEnabled(ready)
         self.before_btn.setEnabled(ready)
         self.after_btn.setEnabled(ready and self.pair is not None)
@@ -333,6 +355,32 @@ class DiagnosticsPage(Page):
             self.error(exc)
 
         self.runner.start(lambda _p: ds.verify(e.id), on_done=done, on_error=fail)
+
+    def run_all(self) -> None:
+        if self.project_id is None or self.list.count() == 0:
+            return
+        ds = self.ws.diagnostics()
+        pid = self.project_id
+        self._busy = True
+        self._sync()
+
+        self.runner.start(
+            lambda _p: ds.run_across_endpoints(pid), on_done=self._show_sweep, on_error=self._sweep_failed
+        )
+
+    def _sweep_failed(self, exc: Exception) -> None:
+        self._busy = False
+        self._sync()
+        self.error(exc)
+
+    def _show_sweep(self, rows: list[SweepRow]) -> None:
+        self._busy = False
+        self._sync()
+        self.refresh()
+        SweepDialog(rows, self).exec()
+        checked = sum(1 for r in rows if r.outcome is not None)
+        matched = sum(1 for r in rows if r.outcome is Outcome.MATCHED)
+        self.notify.show(f"Проверено адресов: {checked}, сессия принята на {matched}", "info")
 
     def run(self, phase: str | None) -> None:
         e = self.current()
@@ -406,3 +454,58 @@ class DiagnosticsPage(Page):
         )
         self.result.setHtml("".join(out))
         self._show_endpoint()
+
+
+class SweepDialog(QDialog):
+    """Сводка прогона тестовых сессий по всем адресам проекта."""
+
+    def __init__(self, rows: list[SweepRow], parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Проверка всех моих сайтов")
+        self.setMinimumSize(720, 420)
+        lay = QVBoxLayout(self)
+        checked = sum(1 for r in rows if r.outcome is not None)
+        matched = sum(1 for r in rows if r.outcome is Outcome.MATCHED)
+        head = QLabel(f"Адресов в проекте: {len(rows)}. Опрошено: {checked}. Сессия принята сервером на: {matched}.")
+        head.setWordWrap(True)
+        lay.addWidget(head)
+        table = QTableWidget(len(rows), 4)
+        table.setHorizontalHeaderLabels(["Адрес", "Результат", "Код", "Отправлено cookies / причина"])
+        table.verticalHeader().setVisible(False)
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        table.setColumnWidth(1, 150)
+        table.setColumnWidth(2, 60)
+        for row, r in enumerate(rows):
+            if r.outcome is not None:
+                label = {
+                    Outcome.MATCHED: "Принята",
+                    Outcome.NOT_MATCHED: "Не принята",
+                    Outcome.ERROR: "Ошибка запроса",
+                }[r.outcome]
+                color = OUTCOME[r.outcome][1]
+                detail = f"{len(r.matched_cookie_ids)} шт."
+            else:
+                label, color = (r.skipped_reason or "пропущен", STATUS_COLORS["unknown"])
+                detail = r.skipped_reason or ""
+            code = str(r.result.status_code) if r.result and r.result.status_code is not None else "—"
+            for col, (text, c) in enumerate(((r.url, None), (label, color), (code, None), (detail, None))):
+                it = QTableWidgetItem(text)
+                it.setFlags(it.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                if c:
+                    it.setForeground(QColor(c))
+                if col == 0:
+                    it.setToolTip(r.url)
+                table.setItem(row, col, it)
+        lay.addWidget(table, 1)
+        note = QLabel(
+            "Совпадение маркеров показывает, как каждый сервер ответил на эти cookies сейчас. "
+            "Неподтверждённые адреса не опрашивались."
+        )
+        note.setWordWrap(True)
+        note.setProperty("role", "muted")
+        lay.addWidget(note)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(self.reject)
+        buttons.accepted.connect(self.accept)
+        lay.addWidget(buttons)

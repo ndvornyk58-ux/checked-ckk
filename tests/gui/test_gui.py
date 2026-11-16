@@ -425,3 +425,64 @@ def test_batch_lock_blocks_start(qtbot, window: MainWindow, unlocked: Workspace,
     assert page.start_btn.isEnabled()
     window.settings.lock_btn.click()
     assert not page.start_btn.isEnabled() and "заблокировано" in page.start_btn.toolTip()
+
+
+def test_diagnostics_sweep_all_sites(qtbot, window: MainWindow, unlocked: Workspace, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    import threading
+    from http.server import ThreadingHTTPServer
+
+    from app.gui.views.diagnostics import SweepDialog
+    from app.services.diagnostics import Markers
+    from tests.integration.test_diagnostics import ME, _Site
+
+    _Site.valid, _Site.forget_logout = {"good-session"}, False
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Site)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        base = f"http://127.0.0.1:{srv.server_address[1]}"
+        src = tmp_path / "c.jsonl"
+        src.write_text('{"name":"sid","value":"good-session","domain":"127.0.0.1","hostOnly":true}\n')
+        unlocked.importer().run(window.project_id, [src])
+        unlocked.cookies.set_test_session(unlocked.cookies.ids(window.project_id), True)
+        ds = unlocked.diagnostics()
+        ds.add_endpoint(window.project_id, f"{base}/api/me", ME)  # локальный, сработает
+        ds.add_endpoint(window.project_id, "https://app.example.com/x", Markers(body_contains=("a",)))  # не подтверждён
+
+        page = window.diagnostics
+        window.show_page(window.pages.index(page))
+        assert page.sweep_btn.isEnabled()
+
+        shown: dict[str, SweepDialog] = {}
+        orig = SweepDialog.exec
+
+        def capture(self: SweepDialog) -> int:
+            shown["dlg"] = self
+            return 0
+
+        SweepDialog.exec = capture  # type: ignore[method-assign]
+        try:
+            page.sweep_btn.click()
+            settle(qtbot, window)
+        finally:
+            SweepDialog.exec = orig  # type: ignore[method-assign]
+
+        from PySide6.QtWidgets import QTableWidget
+
+        dlg = shown["dlg"]
+        table = dlg.findChildren(QTableWidget)[0]
+        assert table.rowCount() == 2
+        hosts = {table.item(r, 0).text() for r in range(2)}
+        assert any("127.0.0.1" in h for h in hosts) and any("app.example.com" in h for h in hosts)
+    finally:
+        srv.shutdown()
+
+
+def test_diagnostics_sweep_disabled_when_locked(qtbot, window: MainWindow, unlocked: Workspace) -> None:  # type: ignore[no-untyped-def]
+    from app.services.diagnostics import Markers
+
+    unlocked.diagnostics().add_endpoint(window.project_id, "http://127.0.0.1:9/a", Markers(body_contains=("x",)))
+    page = window.diagnostics
+    window.show_page(window.pages.index(page))
+    assert page.sweep_btn.isEnabled()
+    window.settings.lock_btn.click()
+    assert not page.sweep_btn.isEnabled() and "заблокировано" in page.sweep_btn.toolTip()

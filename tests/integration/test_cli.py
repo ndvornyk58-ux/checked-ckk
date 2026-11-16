@@ -107,3 +107,28 @@ def test_batch_commands(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.
     assert main(["batch-retry", str(job_id), "--project", "p"]) == 0
     assert "файлов с ошибками 0" in capsys.readouterr().out
     assert main(["stats", "--project", "p"]) == 0 and "Всего записей : 2" in capsys.readouterr().out
+
+
+def test_diag_run_all(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    import threading
+    from http.server import ThreadingHTTPServer
+
+    from tests.integration.test_diagnostics import _Site
+
+    _Site.valid, _Site.forget_logout = {"good-session"}, False
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Site)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        url = f"http://127.0.0.1:{srv.server_address[1]}/api/me"
+        monkeypatch.setenv("CIP_MASTER_PASSWORD", "cli-test-password")
+        assert main(["key", "init", "--password"]) == 0
+        src = tmp_path / "c.jsonl"
+        src.write_text('{"name":"sid","value":"good-session","domain":"127.0.0.1","hostOnly":true}\n')
+        assert main(["import", str(src), "--project", "s"]) == 0
+        assert main(["diag", "add", url, "--project", "s", "--contains", "alice"]) == 0
+        assert main(["diag", "mark", "1", "--project", "s"]) == 0
+        assert main(["diag", "run-all", "--project", "s"]) == 0
+        out = capsys.readouterr().out
+        assert "СОВПАЛО" in out and "сессия принята на 1" in out
+    finally:
+        srv.shutdown()

@@ -329,6 +329,25 @@ def _cmd_diag_run(a: argparse.Namespace, ctx: AppContext) -> int:
     return 0 if r.outcome is Outcome.MATCHED else 1
 
 
+def _cmd_diag_run_all(a: argparse.Namespace, ctx: AppContext) -> int:
+    ds = DiagnosticsService(ctx.sessions, _unlock(ctx))
+    rows = ds.run_across_endpoints(_project_id(ctx, a.project))
+    if not rows:
+        print("В проекте нет адресов диагностики")
+        return 0
+    for r in rows:
+        if r.outcome is not None:
+            mark = {Outcome.MATCHED: "СОВПАЛО", Outcome.NOT_MATCHED: "НЕ СОВПАЛО", Outcome.ERROR: "ОШИБКА"}[r.outcome]
+            extra = f"код {r.result.status_code}, cookies {len(r.matched_cookie_ids)}" if r.result else ""
+        else:
+            mark, extra = "ПРОПУЩЕН", r.skipped_reason or ""
+        print(f"  [{mark:11}] {r.url}  {extra}")
+    checked = sum(1 for r in rows if r.outcome is not None)
+    matched = sum(1 for r in rows if r.outcome is Outcome.MATCHED)
+    print(f"Итог: адресов {len(rows)}, опрошено {checked}, сессия принята на {matched}")
+    return 0
+
+
 def _cmd_diag_history(a: argparse.Namespace, ctx: AppContext) -> int:
     ds, ep = _endpoint(ctx, a.project, a.url)
     for r in ds.history(ep.id, a.limit):
@@ -483,6 +502,9 @@ def build_parser() -> argparse.ArgumentParser:
     dr.add_argument("--phase", choices=["before", "after"])
     dr.add_argument("--pair")
     dr.set_defaults(func=_cmd_diag_run)
+    ra = dg.add_parser("run-all", help="прогнать тестовые сессии по всем адресам проекта")
+    ra.add_argument("--project", required=True)
+    ra.set_defaults(func=_cmd_diag_run_all)
     dh = dg.add_parser("history", help="история проверок адреса")
     dh.add_argument("url")
     dh.add_argument("--project", required=True)
