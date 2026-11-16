@@ -3,8 +3,11 @@
 Локальная desktop-платформа для анализа, проверки и аудита безопасности HTTP cookies
 собственных веб-приложений и тестовых сред.
 
-> Статус: **PHASE 2 завершена** — ядро: парсеры, импорт, валидация, шифрование, запросы. GUI — PHASE 3.
-> Подробно: [`docs/STATUS.md`](docs/STATUS.md). Устройство: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+> Статус: **PHASE 3 завершена** — графический интерфейс поверх ядра. Подробно: [`docs/STATUS.md`](docs/STATUS.md).
+
+![Обзор](docs/screenshots/dashboard.png)
+![Cookies](docs/screenshots/cookies.png)
+> Устройство: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Требования
 Python 3.12+.
@@ -14,9 +17,17 @@ Python 3.12+.
 python -m venv .venv
 # Windows: .venv\Scripts\activate    Linux/macOS: source .venv/bin/activate
 pip install -r requirements.txt
+pip install PySide6          # для графического интерфейса
 ```
 
-## Запуск (командная строка; GUI — с PHASE 3)
+## Запуск
+```bash
+python main.py               # графический интерфейс
+```
+При первом запуске программа предложит защитить ключ шифрования системным хранилищем
+или мастер-паролем.
+
+### Командная строка
 ```bash
 python main.py info                                   # где лежат данные, состояние схемы
 python main.py key init                               # создать ключ шифрования (keyring или мастер-пароль)

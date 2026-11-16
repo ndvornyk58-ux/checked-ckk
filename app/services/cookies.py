@@ -47,6 +47,7 @@ class CookieFilter:
     same_site: SameSite | None = None
     batch_id: int | None = None
     test_sessions_only: bool = False
+    not_analyzed: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,6 +222,8 @@ class CookieService:
             c.append(CookieRow.batch_id == f.batch_id)
         if f.test_sessions_only:
             c.append(CookieRow.is_test_session.is_(True))
+        if f.not_analyzed:
+            c.append(CookieRow.validation_status.is_(None))
         return c
 
     def page(
@@ -268,6 +271,19 @@ class CookieService:
             return list(
                 s.scalars(select(CookieRow.id).where(*self._conditions(project_id, f or CookieFilter(), now_ts())))
             )
+
+    def domain_counts(self, project_id: int, f: CookieFilter | None = None, limit: int = 500) -> list[tuple[str, int]]:
+        """Группировка по доменам: (домен, число записей), крупные группы первыми."""
+        cond = self._conditions(project_id, f or CookieFilter(), now_ts())
+        with self._sessions() as s:
+            rows = s.execute(
+                select(CookieRow.domain, func.count())
+                .where(*cond)
+                .group_by(CookieRow.domain)
+                .order_by(func.count().desc(), CookieRow.domain)
+                .limit(limit)
+            ).all()
+            return [(d, int(n)) for d, n in rows]
 
     # ------------------------------------------------------------------ детали
     def detail(self, cookie_id: int, *, reveal: bool = False) -> CookieDetail:

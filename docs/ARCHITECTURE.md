@@ -132,3 +132,18 @@ Pause/resume/cancel — кооперативные, на границах чан
 `scripts/check.sh` / `scripts/check.ps1`: ruff, ruff format, mypy (strict для domain, rules,
 parsers, services), import-linter, pytest. Фаза не закрывается, пока проверки не зелёные.
 Тест `test_migration_matches_orm_exactly` не даёт ORM и миграциям разойтись.
+
+## 10. Слой представления (PySide6)
+
+GUI получает из composition root (`main.py`) один объект `app.services.workspace.Workspace` —
+фасад над сервисами, текущим состоянием хранилища и настройками — и не импортирует ни
+инфраструктуру, ни SQLAlchemy (контракт import-linter запрещает прямые импорты).
+
+* `gui/tasks.py` — `TaskRunner`: любые вызовы, которые могут длиться дольше кадра (импорт,
+  проверка, предпросмотр, scrypt), выполняются в `QThreadPool`; результат, ошибка и прогресс
+  возвращаются в главный поток только сигналами.
+* `gui/models/cookie_table.py` — модель с `canFetchMore/fetchMore`: одна страница = один
+  keyset-запрос; значения в модель не загружаются вовсе.
+* `gui/theming` — дизайн-токены → QSS и `QPalette`. Интерактивный акцент используется только для
+  нажимаемого и выбранного; тёплые и красные тона зарезервированы за статусами проверки.
+* Экраны (`gui/views`) общаются с окном через сигналы и колбэк `on_data_changed`, а не напрямую.
